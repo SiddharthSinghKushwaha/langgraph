@@ -1,0 +1,3 @@
+timestamp,dataset,framework,tasks_generated,code_generated_success,code_generated_failed,elapsed_time_sec,avg_cpu_percent,avg_memory_mb,peak_memory_mb
+2026-06-02T16:06:53.404121,agri-data,LEI,7,4,3,69.958,11.24,82.07,82.36
+2026-06-02T16:08:01.528887,agri-data,LangGraph,5,3,2,68.12,12.73,83.81,83.92

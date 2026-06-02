@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "task_name": "Soil Moisture and Temperature Correlation Analysis",
+      "description": "Analyze the relationship between soil moisture and temperature to understand their impact on crop growth."
+    },
+    {
+      "task_name": "Crop Growth Stage Classification",
+      "description": "Classify crops into different growth stages (Seedling, Vegetative, Flowering) based on sensor data."
+    },
+    {
+      "task_name": "Nutrient Balance Ratio (NBR) Calculation",
+      "description": "Compute the Nutrient Balance Ratio to assess the balance between nitrogen, phosphorus, and potassium in the soil."
+    },
+    {
+      "task_name": "Photosynthesis Potential (PP) Estimation",
+      "description": "Estimate the Photosynthesis Potential based on sunlight exposure, CO2 concentration, and temperature."
+    },
+    {
+      "task_name": "Soil Fertility Index (SFI) Computation",
+      "description": "Calculate the Soil Fertility Index to assess composite soil fertility based on organic matter and NPK levels."
+    },
+    {
+      "task_name": "Water Usage Efficiency Analysis",
+      "description": "Analyze the efficiency of water usage per kilogram of crop yield to optimize irrigation strategies."
+    },
+    {
+      "task_name": "Temperature-Humidity Index (THI) Calculation",
+      "description": "Compute the Temperature-Humidity Index to evaluate crop stress due to heat and moisture."
+    }
+  ]
+}
