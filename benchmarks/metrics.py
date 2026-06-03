@@ -58,7 +58,7 @@ class ResourceProfiler:
         self._thread = threading.Thread(target=self._profile_loop, daemon=True)
         self._thread.start()
 
-    def stop(self) -> Dict[str, Any]:
+    def stop(self, label: str = None) -> Dict[str, Any]:
         """Stop profiling and return aggregated stats."""
         self.end_time = time.perf_counter()
         self._stop_event.set()
@@ -75,6 +75,28 @@ class ResourceProfiler:
         mem_mb = [m / (1024 * 1024) for m in self.memory_samples]
         avg_mem = sum(mem_mb) / len(mem_mb) if mem_mb else 0.0
         peak_mem = max(mem_mb) if mem_mb else 0.0
+        
+        # Save raw 0.1s samples to verification folder if label provided
+        if label and self.cpu_samples:
+            try:
+                from pathlib import Path
+                import csv
+                
+                samples_dir = Path(__file__).resolve().parent / "results" / "samples"
+                samples_dir.mkdir(parents=True, exist_ok=True)
+                
+                timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+                csv_path = samples_dir / f"{label}_{timestamp_str}.csv"
+                
+                with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["time_offset_sec", "cpu_percent", "memory_rss_mb"])
+                    
+                    for idx, (cpu_val, mem_val) in enumerate(zip(self.cpu_samples, mem_mb)):
+                        time_offset = round(idx * self.interval, 2)
+                        writer.writerow([time_offset, round(cpu_val, 2), round(mem_val, 2)])
+            except Exception as e:
+                print(f"[WARNING] Could not save raw resource samples: {e}")
         
         return {
             "elapsed_time_sec": round(elapsed_time, 3),

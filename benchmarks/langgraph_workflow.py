@@ -288,13 +288,24 @@ def run_langgraph_workflow(dataset_dir: Path, output_dir: Path) -> dict:
     with open(context_path, "r", encoding="utf-8") as f:
         context = f.read()
         
+    output_dir.mkdir(parents=True, exist_ok=True)
+    task_list_path = output_dir / "tasks_list.json"
+    
+    existing_tasks = {"tasks": []}
+    if task_list_path.exists() and task_list_path.stat().st_size > 0:
+        try:
+            with open(task_list_path, "r", encoding="utf-8") as f:
+                existing_tasks = json.load(f)
+        except Exception:
+            pass
+            
     initial_state = {
         "dataset_dir": dataset_dir,
         "output_dir": output_dir,
         "metadata": metadata,
         "context": context,
         "sample_data": sample_data,
-        "existing_tasks": {"tasks": []},
+        "existing_tasks": existing_tasks,
         "generated_tasks": {"tasks": []},
         "generated_codes": {},
         "metrics": {}
@@ -302,4 +313,22 @@ def run_langgraph_workflow(dataset_dir: Path, output_dir: Path) -> dict:
     
     # 2. Invoke stateful graph flow
     final_state = langgraph_app.invoke(initial_state)
+    
+    # Ensure task explicitly carries its data_type
+    generated_tasks = final_state.get("generated_tasks", {"tasks": []})
+    for t in generated_tasks.get("tasks", []):
+        t.setdefault("data_type", dataset_dir.name)
+        
+    # Write new_tasks.json (overwritten at each run)
+    new_tasks_path = output_dir / "new_tasks.json"
+    with open(new_tasks_path, "w", encoding="utf-8") as f:
+        json.dump(generated_tasks, f, indent=2, ensure_ascii=False)
+        
+    # Write tasks_list.json (cumulative list)
+    cumulative_tasks = {"tasks": []}
+    cumulative_tasks["tasks"].extend(existing_tasks.get("tasks", []))
+    cumulative_tasks["tasks"].extend(generated_tasks.get("tasks", []))
+    with open(task_list_path, "w", encoding="utf-8") as f:
+        json.dump(cumulative_tasks, f, indent=2, ensure_ascii=False)
+        
     return final_state
