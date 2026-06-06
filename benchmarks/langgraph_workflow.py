@@ -9,6 +9,8 @@ with Raspberry Pi and other resource-constrained platforms out-of-the-box.
 import os
 import sys
 import json
+import subprocess
+import re
 from pathlib import Path
 from typing import TypedDict, Dict, Any, List
 from openai import OpenAI
@@ -54,6 +56,88 @@ class GraphState(TypedDict):
 
 # --- Nodes ---
 
+def install_package(package_name: str, requirements_path: Path):
+    """Install package using pip and add to requirements.txt if not present."""
+    print(f"[Dynamic Dependency] Installing missing package: {package_name}...")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", package_name],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        print(f"[Dynamic Dependency] Successfully installed: {package_name}")
+        
+        if requirements_path.exists():
+            content = requirements_path.read_text(encoding="utf-8")
+            if package_name not in content:
+                # Ensure newline at the end if not present
+                if content and not content.endswith('\n'):
+                    with open(requirements_path, "a", encoding="utf-8") as f:
+                        f.write("\n")
+                with open(requirements_path, "a", encoding="utf-8") as f:
+                    f.write(f"{package_name}\n")
+                print(f"[Dynamic Dependency] Added {package_name} to requirements.txt")
+    except Exception as e:
+        print(f"[WARNING] Failed to install package {package_name}: {e}")
+
+def extract_missing_module(stderr: str) -> str:
+    """Extract module name from ModuleNotFoundError or ImportError in stderr."""
+    match = re.search(r"No module named ['\"]([^'\"]+)['\"]", stderr)
+    if match:
+        return match.group(1).split('.')[0]
+    
+    match_alt = re.search(r"No module named ([^\s]+)", stderr)
+    if match_alt:
+        return match_alt.group(1).split('.')[0]
+        
+    return None
+
+def execute_and_validate_task(filepath: Path, requirements_path: Path, max_retries=3) -> bool:
+    for attempt in range(max_retries):
+        try:
+            res = subprocess.run(
+                [sys.executable, str(filepath)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(LEI_DIR)
+            )
+            stdout = (res.stdout or "").strip()
+            stderr = (res.stderr or "").strip()
+            
+            if "modulenotfounderror" in stderr.lower() or "no module named" in stderr.lower():
+                missing_module = extract_missing_module(stderr)
+                if missing_module:
+                    install_package(missing_module, requirements_path)
+                    continue
+            
+            s = (stdout + "\n" + stderr).lower()
+            indicators = ["error", "exception", "traceback", "failed", "input file not found", "error:"]
+            has_error = any(ind in s for ind in indicators)
+            
+            try:
+                parsed_json = json.loads(stdout)
+                if isinstance(parsed_json, dict):
+                    status_val = str(parsed_json.get("status", "")).lower()
+                    if status_val in {"failed", "error"} or parsed_json.get("error"):
+                        has_error = True
+                    result = parsed_json.get("result_summary")
+                    if isinstance(result, dict):
+                        if str(result.get("status", "")).lower() in {"failed", "error"} or result.get("error"):
+                            has_error = True
+            except Exception:
+                pass
+                
+            if res.returncode == 0 and not has_error:
+                return True
+            return False
+        except subprocess.TimeoutExpired:
+            return False
+        except Exception:
+            return False
+    return False
+
 def task_generation_node(state: GraphState) -> Dict[str, Any]:
     """Node 1: Analyze metadata + context + sample_data -> Generate Composite Tasks"""
     print("[LangGraph Node] Running Task Generation Node...")
@@ -88,8 +172,7 @@ Summary of current resource usage and its availability on the edge device:
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.0
+        ]
     )
     
     raw_output = response.choices[0].message.content or ""
@@ -163,8 +246,7 @@ Tasks (<=2):
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.0
+                ]
             )
             raw_output = response.choices[0].message.content or ""
             parsed = extract_first_json_object(raw_output)
@@ -183,7 +265,12 @@ Tasks (<=2):
                 with open(filepath, "w", encoding="utf-8") as wf:
                     wf.write(code_with_docstring)
                     
-                results[task_name] = {"status": "success", "filepath": str(filepath)}
+                # Run task and validate execution status
+                requirements_path = Path(__file__).resolve().parent / "requirements.txt"
+                if execute_and_validate_task(filepath, requirements_path):
+                    results[task_name] = {"status": "success", "filepath": str(filepath)}
+                else:
+                    results[task_name] = {"status": "failed", "error": "Execution failed"}
             else:
                 results[task_name] = {"status": "failed", "error": "No code block returned"}
         except Exception as e:
